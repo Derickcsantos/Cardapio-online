@@ -1,0 +1,20 @@
+/src
+  /app
+    /admin
+      /[slug]  # Painel admin para cada organização
+        /page.tsx
+      /master  # Painel admin master
+        /page.tsx
+    /[slug]  # Páginas públicas das organizações
+      /page.tsx
+    /page.tsx  # Página inicial
+  /components
+    /ui  # Componentes de UI reutilizáveis
+    /admin  # Componentes específicos para área admin
+    /public  # Componentes para páginas públicas
+  /lib
+    /supabase  # Configuração e funções do Supabase
+    /utils  # Funções utilitárias
+  /types  # Definições de tipos TypeScript
+  /hooks  # Custom hooks
+  /middleware.ts  # Middleware para proteção de rotas
