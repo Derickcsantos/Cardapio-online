@@ -1,25 +1,25 @@
 "use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { supabase } from '@/lib/supabase/client';
-import Button from '@/components/ui/Button';
-import Input from '@/components/ui/Input';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { supabase } from "@/lib/supabase/client";
+import Button from "@/components/ui/Button";
+import Input from "@/components/ui/Input";
 
 const loginSchema = z.object({
-  email: z.string().email('Email inválido'),
-  password: z.string().min(6, 'A senha deve ter pelo menos 6 caracteres'),
+  email: z.string().email("Email inválido"),
+  password: z.string().min(3, "A senha deve ter pelo menos 3 caracteres"),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginForm() {
   const router = useRouter();
-  const [errorMessage, setErrorMessage] = useState<string>('');
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   const {
     register,
@@ -31,41 +31,64 @@ export default function LoginForm() {
 
   const onSubmit = async (data: LoginFormValues) => {
     setIsLoading(true);
-    setErrorMessage('');
+    setErrorMessage("");
+
+    console.log("📥 Dados recebidos do formulário:", data);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: data.email,
-        password: data.password,
-      });
+      const { data: userData, error } = await supabase
+        .from("users")
+        .select("id, is_master, organization_id")
+        .eq("email", data.email)
+        .eq("password", data.password)
+        .maybeSingle();
 
       if (error) {
-        throw error;
+        console.error("❌ Erro ao buscar usuário na tabela 'users':", error.message);
+        throw new Error("Erro no servidor. Tente novamente.");
       }
 
-      // Verificar se é admin master
-      const { data: userData } = await supabase
-        .from('users')
-        .select('is_master, organization_id')
-        .eq('id', (await supabase.auth.getUser()).data.user?.id)
-        .single();
+      console.log("✅ Resultado da consulta de usuário:", userData);
 
-      if (userData?.is_master) {
-        router.push('/admin/master');
-      } else if (userData?.organization_id) {
-        // Buscar o slug da organização
-        const { data: orgData } = await supabase
-          .from('organizations')
-          .select('slug')
-          .eq('id', userData.organization_id)
+      if (!userData) {
+        console.warn("⚠️ Nenhum usuário encontrado com os dados fornecidos.");
+        throw new Error("Email ou senha inválidos");
+      }
+
+      // Redirecionamento condicional
+      if (userData.is_master) {
+        console.log("🔁 Redirecionando para /admin/master");
+        router.push("/admin/master");
+        return;
+      }
+
+      if (userData.organization_id) {
+        const { data: orgData, error: orgError } = await supabase
+          .from("organizations")
+          .select("slug")
+          .eq("id", userData.organization_id)
           .single();
 
-        router.push(`/admin/${orgData?.slug}`);
-      } else {
-        router.push('/');
+        if (orgError) {
+          console.error("❌ Erro ao buscar organização:", orgError.message);
+          throw new Error("Organização não encontrada");
+        }
+
+        if (!orgData?.slug) {
+          console.warn("⚠️ Organização encontrada mas sem 'slug'");
+          throw new Error("Organização inválida");
+        }
+
+        console.log(`🔁 Redirecionando para /admin/${orgData.slug}`);
+        router.push(`/admin/${orgData.slug}`);
+        return;
       }
+
+      console.warn("⚠️ Usuário autenticado, mas sem is_master nem organização_id");
+      router.push("/");
     } catch (error: any) {
-      setErrorMessage(error.message || 'Erro ao fazer login');
+      console.error("❌ Erro geral no login:", error);
+      setErrorMessage(error.message || "Erro ao fazer login");
     } finally {
       setIsLoading(false);
     }
@@ -78,7 +101,7 @@ export default function LoginForm() {
         label="Email"
         type="email"
         placeholder="seu@email.com"
-        {...register('email')}
+        {...register("email")}
         error={errors.email?.message}
         required
       />
@@ -88,17 +111,19 @@ export default function LoginForm() {
         label="Senha"
         type="password"
         placeholder="******"
-        {...register('password')}
+        {...register("password")}
         error={errors.password?.message}
         required
       />
 
       {errorMessage && (
-        <div className="p-3 bg-red-100 text-red-700 rounded-md">{errorMessage}</div>
+        <div className="p-3 bg-red-100 text-red-700 rounded-md">
+          {errorMessage}
+        </div>
       )}
 
       <Button type="submit" disabled={isLoading} className="w-full">
-        {isLoading ? 'Entrando...' : 'Entrar'}
+        {isLoading ? "Entrando..." : "Entrar"}
       </Button>
     </form>
   );

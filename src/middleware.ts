@@ -1,60 +1,45 @@
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const supabase = createMiddlewareClient({ req, res });
-  
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
 
-  // Verificar se o usuário está autenticado para acessar rotas /admin
+  const userId = req.cookies.get('user_id')?.value;
+
   if (req.nextUrl.pathname.startsWith('/admin')) {
-    if (!session) {
-      const redirectUrl = new URL('/login', req.url);
-      return NextResponse.redirect(redirectUrl);
+    if (!userId) {
+      return NextResponse.redirect(new URL('/login', req.url));
     }
 
-    // Verificar se é um admin master tentando acessar /admin/master
-    if (req.nextUrl.pathname.startsWith('/admin/master')) {
-      const { data: userData } = await supabase
-        .from('users')
-        .select('is_master')
-        .eq('id', session.user.id)
-        .single();
+    const { data: userData, error } = await supabase
+      .from('users')
+      .select('is_master, organization_id')
+      .eq('id', userId)
+      .single();
 
-      if (!userData?.is_master) {
-        // Redirecionar para a página inicial se não for admin master
+    if (error || !userData) {
+      return NextResponse.redirect(new URL('/login', req.url));
+    }
+
+    if (req.nextUrl.pathname.startsWith('/admin/master')) {
+      if (!userData.is_master) {
         return NextResponse.redirect(new URL('/', req.url));
       }
     }
 
-    // Verificar se o usuário pertence à organização que está tentando acessar
     if (req.nextUrl.pathname.startsWith('/admin/') && !req.nextUrl.pathname.startsWith('/admin/master')) {
-      const slug = req.nextUrl.pathname.split('/')[2]; // Pega o slug da URL
-      
+      const slug = req.nextUrl.pathname.split('/')[2];
+
       if (slug) {
-        const { data: organization } = await supabase
+        const { data: org } = await supabase
           .from('organizations')
           .select('id')
           .eq('slug', slug)
           .single();
 
-        if (organization) {
-          const { data: userData } = await supabase
-            .from('users')
-            .select('organization_id, is_master')
-            .eq('id', session.user.id)
-            .single();
-
-          // Permitir acesso se o usuário for admin master ou pertencer à organização
-          if (!userData?.is_master && userData?.organization_id !== organization.id) {
-            return NextResponse.redirect(new URL('/', req.url));
-          }
-        } else {
-          // Organização não encontrada
+        if (!org || (userData.organization_id !== org.id && !userData.is_master)) {
           return NextResponse.redirect(new URL('/', req.url));
         }
       }
